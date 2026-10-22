@@ -42,6 +42,7 @@ const makeContext = (overrides: {
   slot?: (options: { render: (input: { sessionID: string }) => any }) => () => void
   dialogShow?: () => void
   onDialogShow?: (render: () => any) => void
+  onDialogClear?: () => void
   keymap?: Partial<Plugin.Context["keymap"]>
 } = {}) => {
   // The host keeps reactive catalogs per location, not a single UI-wide list.
@@ -128,7 +129,7 @@ const makeContext = (overrides: {
           overrides.dialogShow?.()
         },
         set: () => {},
-        clear: () => {},
+        clear: () => { overrides.onDialogClear?.() },
       },
       router: { current: () => ({ type: "session", sessionID: "session-1" }) },
       toast: { show: overrides.toastShow ?? (() => {}) },
@@ -508,6 +509,43 @@ test("preview dialog renders wrapped description and body without title or overl
       expect(frame).not.toContain("# find-skills") // no injected title
     } finally {
       fromStyles.mockRestore()
+      dialogView.renderer.destroy()
+    }
+  }, { width: 110, height: 24 })
+})
+
+test("preview dialog closes through its own modal escape binding", async () => {
+  // Regression (issue #3): the host's default modal escape can stay unreachable
+  // for a dialog shown synchronously from a mouseup handler, so the preview must
+  // bring its own binding — the pattern SkillsDialog already uses.
+  let dialogRender!: () => any
+  const layers: (() => any)[] = []
+  let clears = 0
+  let clearedSelection = 0
+  const context = makeContext({
+    skills: () => [{ id: "alpha", name: "alpha", description: "", content: "Body.\n" }],
+    onDialogShow: (render) => { dialogRender = render },
+    onDialogClear: () => { clears++ },
+    clearSelection: () => { clearedSelection++ },
+    keymap: { layer: (factory: () => any) => { layers.push(factory) } },
+  })
+  await withPanel(context, async (view) => {
+    await view.waitForFrame((frame) => frame.includes("alpha"))
+    await view.mockMouse.click(4, 1)
+    const dialogView = await testRender(() => (
+      <box width="100%" height={20}>{dialogRender()}</box>
+    ), { width: 110, height: 24 })
+    try {
+      await waitForMarkdown(dialogView)
+      const escape = layers.map((layer) => layer().commands ?? [])
+        .flat()
+        .find((command) => command.bind === "escape")
+      expect(escape).toBeDefined()
+      const selectionsBefore = clearedSelection
+      escape!.run()
+      expect(clears).toBe(1)
+      expect(clearedSelection).toBe(selectionsBefore + 1)
+    } finally {
       dialogView.renderer.destroy()
     }
   }, { width: 110, height: 24 })
@@ -1884,7 +1922,8 @@ test("same-name skills share one label; only the loaded ID is colored and the pr
     const dialogView = await testRender(() => dialogRender(), { width: 60, height: 16 })
     try {
       await waitForMarkdown(dialogView)
-      await dialogView.waitForFrame((frame) => frame.includes("id: two"))
+      // 0.6 markdown paints body text only after async highlighting lands.
+      await dialogView.waitForFrame((frame) => frame.includes("id: two") && frame.includes("Second"))
       expect(dialogView.captureCharFrame()).toContain("Second")
     } finally { dialogView.renderer.destroy() }
   }, { width: 50 })

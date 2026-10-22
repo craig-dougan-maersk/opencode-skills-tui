@@ -7,7 +7,7 @@ import type { MouseEvent, Renderable } from "@opentui/core"
 import { Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import type { Accessor } from "solid-js"
 import type { LocationRef } from "@opencode/client"
-import { useTerminalDimensions } from "@opentui/solid"
+import { useTerminalDimensions, useRenderer } from "@opentui/solid"
 import type { ResolvedTheme } from "@opencode/theme/tui"
 import { SkillsPanel } from "./components/skills-panel"
 import { SkillsDialog } from "./components/skills-dialog"
@@ -35,11 +35,13 @@ const definePlugin = (plugin: Plugin.Definition): Plugin.Definition => plugin
 // Same composite key as @opencode/client/solid locationKey.
 const locationKey = (location: LocationRef) => JSON.stringify([location.directory, location.workspaceID])
 
-function createMarkdownSyntax(theme: ResolvedTheme, owner?: unknown) {
+function createMarkdownSyntax(theme: ResolvedTheme, owner: unknown) {
   const markdown = theme.markdown
   // Native selection inverts glyph colors; transparent backgrounds fall back to black.
   const bg = theme.surface("dialog").background.base
-  return (SyntaxStyle as { fromStyles(styles: Parameters<typeof SyntaxStyle.fromStyles>[0], owner?: unknown): SyntaxStyle }).fromStyles({
+  // @opentui/core 0.6 requires an explicit resource owner for style lifetime;
+  // older hosts ignore the extra argument, so one call covers both.
+  return SyntaxStyle.fromStyles({
     default: { fg: markdown.text, bg },
     "markup.heading": { fg: markdown.heading, bg, bold: true },
     "markup.strong": { fg: markdown.strong, bg, bold: true },
@@ -51,7 +53,7 @@ function createMarkdownSyntax(theme: ResolvedTheme, owner?: unknown) {
     "markup.link.url": { fg: markdown.link, bg, underline: true },
     "markup.link.label": { fg: markdown.linkText, bg, underline: true },
     "markup.strikethrough": { fg: theme.text.muted, bg, dim: true },
-  }, owner)
+  }, owner as never)
 }
 
 function updateMarkdownCode(renderable: Renderable, syntaxStyle: SyntaxStyle) {
@@ -72,16 +74,30 @@ function splitFrontmatter(raw: string): { frontmatter?: string; body: string } {
 }
 
 function SkillPreviewDialog(props: {
+  ctx: Plugin.Context
   skill: SkillSummary
   raw?: string
   theme: Accessor<ResolvedTheme>
   renderer: {
     getLinkAt: (x: number, y: number) => string | null
     getSelection: () => unknown
-    nativeScene?: unknown
   }
 }) {
   const dims = useTerminalDimensions()
+  // The host's default modal escape never fires for a dialog shown synchronously
+  // from a mouseup handler on 2.1.x (issue #3), so register our own binding like
+  // SkillsDialog does; clearSelection keeps the backdrop dismiss guard satisfied.
+  props.ctx.keymap.layer(() => ({
+    mode: "modal",
+    priority: 10,
+    commands: [{
+      bind: "escape",
+      run: () => {
+        props.ctx.renderer.clearSelection()
+        props.ctx.ui.dialog.clear()
+      },
+    }],
+  }))
   const [separatorWidth, setSeparatorWidth] = createSignal(0)
   const separator = () => {
     const label = " provided by plugin "
@@ -90,7 +106,10 @@ function SkillPreviewDialog(props: {
     return `${"-".repeat(dashes - right)}${label}${"-".repeat(right)}`
   }
   let markdown: Renderable | undefined
-  const syntaxStyle = createMemo(() => createMarkdownSyntax(props.theme(), props.renderer.nativeScene))
+  // The style's resource owner must be the renderer that mounts the markdown
+  // (useRenderer inside the dialog), not the panel's renderer reference.
+  const scene = useRenderer()
+  const syntaxStyle = createMemo(() => createMarkdownSyntax(props.theme(), scene.nativeScene))
   createEffect((previous: SyntaxStyle | undefined) => {
     const style = syntaxStyle()
     // Markdown updates children next frame; detach async highlighters before freeing the old style.
@@ -342,7 +361,7 @@ export default definePlugin({
         }
       }
       const previewSkill = createMemo(() => ({ ...skill, fileSamples: fileSamples().get(sampleKey(skill, location)) }))
-      return <SkillPreviewDialog skill={previewSkill()} raw={raw} theme={() => ctx.theme} renderer={ctx.renderer} />
+      return <SkillPreviewDialog ctx={ctx} skill={previewSkill()} raw={raw} theme={() => ctx.theme} renderer={ctx.renderer} />
     }
 
     const openSkillPreview = (skill: SkillSummary, location: LocationRef) => {
