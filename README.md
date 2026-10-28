@@ -27,6 +27,18 @@ opencode plugin add opencode-skills-tui
 
 On V1, see the [V1 guide](https://github.com/aihaipeng/opencode-skills-tui/blob/v0.4.4/README.md).
 
+### Collapsed by default
+
+The panel starts collapsed so the sidebar stays quiet; click the header arrow to expand it. Pass the option as `false` to start expanded:
+
+```jsonc title="opencode.jsonc"
+{
+  "plugins": [
+    { "package": "opencode-skills-tui", "options": { "collapsedByDefault": true } }
+  ]
+}
+```
+
 ## ⚙️ Parameters
 
 Run `/skills-sidebar` to open the settings panel.
@@ -97,7 +109,7 @@ In a local checkout, use [Bun](https://bun.sh):
 
 ```bash
 bun install
-bun run build
+bun run compile
 bun run test
 ```
 

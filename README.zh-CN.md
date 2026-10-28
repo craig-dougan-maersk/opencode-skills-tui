@@ -97,7 +97,7 @@ opencode-skills-tui/
 
 ```bash
 bun install
-bun run build
+bun run compile
 bun run test
 ```
 
