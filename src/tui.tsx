@@ -207,9 +207,11 @@ function SkillPreviewDialog(props: {
 export default definePlugin({
   id: "opencode-skills-tui",
   setup(ctx) {
+    // Collapsed unless explicitly expanded via the plugin's collapsedByDefault option.
+    const collapsedByDefault = ctx.options?.collapsedByDefault !== false
     // Keep collapse per-terminal. Old in-memory settings seed the durable store on reload.
     const [ui, mutateUI] = ctx.storage.memory<Omit<SkillsSiderSettings, "token"> & { token: SkillsSiderSettings["token"] | "metadata" | "instructions"; collapsed: boolean; displayMode?: SkillDisplayMode }>("prefs", {
-      initial: { collapsed: false, switch: "on", scope: "model", preview: "left-click", mention: "right-click", token: "off", state: "on" },
+      initial: { collapsed: collapsedByDefault, switch: "on", scope: "model", preview: "left-click", mention: "right-click", token: "off", state: "on" },
     })
     const normalizeSettings = (value: Omit<typeof ui, "collapsed">): SkillsSiderSettings => ({
       switch: value.switch ?? "on",

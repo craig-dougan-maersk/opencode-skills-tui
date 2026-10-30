@@ -9,7 +9,6 @@ AGENTS.md
 DECISIONS.md
 HANDOFF.md
 node_modules/
-dist/
 
 # Local configuration, secrets and generated files
 /.opencode/

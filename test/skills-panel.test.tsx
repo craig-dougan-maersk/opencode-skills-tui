@@ -44,6 +44,7 @@ const makeContext = (overrides: {
   onDialogShow?: (render: () => any) => void
   onDialogClear?: () => void
   keymap?: Partial<Plugin.Context["keymap"]>
+  options?: Record<string, unknown>
 } = {}) => {
   // The host keeps reactive catalogs per location, not a single UI-wide list.
   const [revision, setRevision] = createSignal(0)
@@ -71,6 +72,9 @@ const makeContext = (overrides: {
   const context = {
     location: { directory: process.cwd() },
     themeMode: "dark",
+    // The panel ships collapsed by default. These suites exercise the expanded
+    // panel, so the stand-in opts out unless a test overrides it explicitly.
+    options: { collapsedByDefault: false, ...overrides.options },
     renderer: { clearSelection: overrides.clearSelection ?? (() => {}) },
     storage: {
       store: (_key: string, options: { initial: object }) => {
@@ -3155,4 +3159,34 @@ test.each(["left-click", "middle-click", "right-click", "off"] as const)("sideba
     expect(host.submits()).toBe(0)
     expect(JSON.stringify(skills)).toBe(before)
   })
+})
+
+test("panel ships collapsed by default and expands on demand", async () => {
+  // Default behaviour: with no options at all the panel starts collapsed, so
+  // the sidebar stays quiet until the user opts in.
+  let render!: (input: { sessionID: string }) => any
+  const context = makeContext({
+    options: { collapsedByDefault: true },
+    skills: () => [{ id: "alpha", name: "alpha", description: "Alpha", content: "# Alpha" }],
+    slot: (options) => {
+      render = options.render
+      return () => {}
+    },
+  })
+  const cleanup = plugin.setup!(context) as () => void
+  const view = await testRender(() => (
+    <box width="100%" height={12}>
+      <scrollbox>{render({ sessionID: "session-1" })}</scrollbox>
+    </box>
+  ), { width: 40, height: 16 })
+  try {
+    await view.waitForFrame((frame) => frame.includes("Skills"))
+    expect(view.captureCharFrame()).toContain("▶ Skills")
+    expect(view.captureCharFrame()).not.toContain("alpha")
+    await view.mockMouse.click(4, 0)
+    await view.waitForFrame((frame) => frame.includes("▼ Skills") && frame.includes("alpha"))
+  } finally {
+    cleanup()
+    view.renderer.destroy()
+  }
 })

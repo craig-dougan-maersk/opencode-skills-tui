@@ -33,11 +33,11 @@
     "./tui": "./dist/tui.js"
   },
   "scripts": {
-    "build": "bun run typecheck && bun scripts/build.ts",
     "test": "bun test --conditions=browser --preload @opentui/solid/preload",
-    "test:package": "bun run build && bun scripts/test-package.ts",
+    "test:package": "bun run compile && bun scripts/test-package.ts",
     "typecheck": "tsc --noEmit",
-    "prepack": "bun run build"
+    "compile": "bun run typecheck && bun scripts/build.ts",
+    "prepublishOnly": "bun run compile"
   },
   "peerDependencies": {
     "@opentui/core": ">=0.5.10",
